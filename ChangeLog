@@ -1,7 +1,12 @@
-Thr Apr 30 1998   Brian Dunford-Shore <brian@ibc.wustl.edu>
+Tue Sep 29 1998   Brian Dunford-Shore <brian@ibc.wustl.edu>
 
  o  Release 1.00
  o  Release 1.10  Fixed Transact-SQL schema bug of fields not showing up
                   because their datatypes were not in the select statement.
                   Added alpha level support for mSQL using DBI.
+ o  Release 1.15  Bug fixes and suggestions from Fyodor Krasnov:
+                  added new-style (0.91) DBI arguments, removed
+                  spurious 'use Sybase::DBlib' from DBI.pm,
+                  added -username option to new RDBAL::Schema for further
+                  differentiating cache.
 

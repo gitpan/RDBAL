@@ -5,7 +5,6 @@ require 5.000;
 $VERSION = "1.00";
 sub Version { $VERSION; }
 
-use Sybase::DBlib;
 use strict;
 use vars qw(@ISA @EXPORT $VERSION $DefaultClass $AutoloadClass);
 use Exporter;
@@ -32,6 +31,7 @@ sub new {
     my($password) = shift;
     my($server) = shift;
     my($driver) = shift;
+    my($database) = shift;
     my($self) = {};
     my($data_source);
 
@@ -39,7 +39,11 @@ sub new {
     if ($driver eq 'Sybase') {
 	$data_source = "dbi:$driver" . ':server=' . $server;
     } else {
-	$data_source = "dbi:$driver:";
+	if (defined($database)) {
+	    $data_source = "dbi:$driver:$database";
+	} else {
+	    $data_source = "dbi:$driver:";
+	}
     }
     $self->{'connection'} =
 	DBI->connect($data_source, $username, $password, { PrintError => 0 });

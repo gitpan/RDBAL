@@ -229,6 +229,10 @@ Thanks very much to:
 
 B<David J. States> (states@ibc.wustl.edu)
 
+and
+
+B<Fyodor Krasnov> (fyodor@bws.aha.ru)
+
      for suggestions and bug fixes.
 
 =head1 BUGS

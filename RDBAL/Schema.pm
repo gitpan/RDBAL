@@ -10,7 +10,7 @@ package RDBAL::Schema;
 
 require 5.000;
 
-$VERSION = "1.10";
+$VERSION = "1.15";
 sub Version { $VERSION; }
 
 use RDBAL::Config;
@@ -54,6 +54,7 @@ sub new {
     bless $self,ref $class || $class || $DefaultClass;
     $self->{'connection'} = $connection;
     $self->{'server'} = $options{'-server'};
+    $self->{'user'} = $options{'-username'};
     $self->{'database'} = $database;
     $self->{'get_system'} = $options{'-get_system'};
     $self->{'server_type'} = $options{'-server_type'};
@@ -547,7 +548,7 @@ sub Field_Width {
     } elsif ($type =~ /money/ ) {
 	$width = 26;
     } elsif ($type =~ /date/ ) {
-	$width = 25;		# Not a real good answer for this one
+	$width = 26;		# Not a real good answer for this one
     } elsif ($type eq 'bit' ) {
 	$width = 1;
     } else {
@@ -791,14 +792,16 @@ sub read_schema_cache {
     my($self) = shift;
     my($database) = $self->{'database'};
     my($server) = $self->{'server'};
+    my($user) = $self->{'user'};
     my($line_type);
     my(@row);
     my($object, $object_type);
     my(@indexes);
-    
-    if (-e "$RDBAL::Config::cache_directory/$server$database.cache" &&
-	-r "$RDBAL::Config::cache_directory/$server$database.cache") {
-	open(CACHE,"$RDBAL::Config::cache_directory/$server$database.cache");
+    my($cache);
+
+    $cache = "$RDBAL::Config::cache_directory/$server$database$user.cache";
+    if (-e $cache && -r $cache) {
+	open(CACHE,"$cache");
 	while(<CACHE>) {
 	    chomp;
 	    ($line_type, @row) = split("\t");
@@ -838,10 +841,13 @@ sub write_schema_cache {
     my($nocache) = shift;
     my($database) = $self->{'database'};
     my($server) = $self->{'server'};
-    
+    my($user) = $self->{'user'};
+    my($cache);
+
+    $cache = "$RDBAL::Config::cache_directory/$server$database$user.cache";
     if (-e $RDBAL::Config::cache_directory &&
-	($nocache || !-e "$RDBAL::Config::cache_directory/$server$database.cache")) {
-	open(CACHE,">$RDBAL::Config::cache_directory/$server$database.cache");
+	($nocache || !-e $cache)) {
+	open(CACHE,">$cache");
 	print CACHE $cache_output;
 	close(CACHE);
 	return 1;
@@ -1079,6 +1085,8 @@ Options are passed as: -option => value, where -option is one of:
                      (and caching) of schema for system tables.
      -nocache        1 or undef.  A true value causes the cached schema to not
                      be used and a new cache to be written.
+     -username       Database username.  This is used to differentiate
+                     between different users views of a database when caching.
 
 This will create a new schema object for the database.  This must be given
 an open connection to a RDBAL database server object:
