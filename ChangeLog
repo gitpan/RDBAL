@@ -1,4 +1,7 @@
 Thr Apr 30 1998   Brian Dunford-Shore <brian@ibc.wustl.edu>
 
  o  Release 1.00
+ o  Release 1.10  Fixed Transact-SQL schema bug of fields not showing up
+                  because their datatypes were not in the select statement.
+                  Added alpha level support for mSQL using DBI.
 

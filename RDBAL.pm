@@ -34,6 +34,7 @@ sub Connect {
     my($password) = shift;
     my($server) = shift;
     my($preferred_layer) = shift;
+    my($database) = shift;	# Optional, required for mSQL
     my($connection);
     my($driver);
 
@@ -51,7 +52,7 @@ sub Connect {
 	} elsif ($preferred_layer =~ /^dbi:/) {
 	    ($driver) = $preferred_layer =~ /^dbi:(.*)/;
 	    $connection =
-		new RDBAL::Layer::DBI($username,$password,$server,$driver);
+		new RDBAL::Layer::DBI($username,$password,$server,$driver,$database);
 	}
     } else {
 	if ($Layer{'SybaseDBlib'}) {
@@ -63,12 +64,13 @@ sub Connect {
 	} else {
 	    map {
 		if (/^dbi:/ && $Layer{$_}) {
-		    ($driver) = /^dbi:(.*)/;
-		    last;
+		    if (!defined($driver)) {
+			($driver) = /^dbi:(.*)/;
+		    }
 		}
 	    } @RDBAL::Config::search_order;
 	    $connection =
-		new RDBAL::Layer::DBI($username,$password,$server,$driver);
+		new RDBAL::Layer::DBI($username,$password,$server,$driver,$database);
 	}
     }
     return $connection;

@@ -10,5 +10,6 @@ TODO				 The To-Do list for the library
 RDBAL/Config.pm		         RDBAL::Config module for configuration
 RDBAL/Schema.pm                  RDBAL::Schema module and documentation
 RDBAL.pm                         RDBAL module and documentation
+msql_rdbal_schema                Schema cache creater for mSQL
 cache/make_cache_dir.pl		 Script to make schema cache directory
 test.pl                          Run tests

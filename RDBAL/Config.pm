@@ -8,7 +8,8 @@ $cache_directory = '/usr/local/schema_cache';
 		 'SybaseDBlib',
 		 'ODBC',
 		 'dbi:Sybase',
-		 'dbi:Oracle'
+		 'dbi:Oracle',
+		 'dbi:mSQL'
 		 );
 # Perl module for each middle layer driver
 %middle_module = ('ApacheSybaseDBlib' => 'Apache::Sybase::DBlib',

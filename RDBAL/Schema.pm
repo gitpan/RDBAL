@@ -10,7 +10,7 @@ package RDBAL::Schema;
 
 require 5.000;
 
-$VERSION = "1.00";
+$VERSION = "1.10";
 sub Version { $VERSION; }
 
 use RDBAL::Config;
@@ -125,8 +125,10 @@ select 'Table'=user_name(t.uid)+'.'+t.name, 'Object_Type'=t.type, 'Field'=c.name
     where t.type in ( $category ) and u.uid=t.uid and t.id=c.id
     and d.name in ( 'tinyint', 'smallint', 'int', 'intn', 'numeric', 'decimal',
 		   'numericn', 'decimaln',
-                    'float', 'double', 'real', 'smallmoney', 'money',
-                    'smalldatetime', 'datetime',
+                    'float', 'floatn', 'double', 'real',
+		   'smallmoney', 'money', 'moneyn',
+                    'smalldatetime', 'datetime', 'datetimn',
+		   'timestamp',
                     'char', 'varchar', 'nchar', 'nvarchar',
                     'binary', 'varbinary', 'bit', 'text', 'image' )
     and c.type=d.type and d.name <> 'nvarchar'
