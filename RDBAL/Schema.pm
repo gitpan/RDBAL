@@ -10,14 +10,14 @@ package RDBAL::Schema;
 
 require 5.000;
 
-$VERSION = "1.15";
+$VERSION = "1.16";
 sub Version { $VERSION; }
 
 use RDBAL::Config;
 use strict;
 use vars qw(@ISA @EXPORT $VERSION $DefaultClass $AutoloadClass);
 use Exporter;
-@ISA = qw(Apache::Sybase::DBlib);
+@ISA = qw();
 
 @EXPORT = ( );
 
@@ -768,6 +768,7 @@ sub Quote_Field {
     my($value) = shift;
     my($object_type) = shift;
     my($type) = $self->Field_Info($object,$field,$object_type,'Type');
+    my($length) = $self->Field_Length($object,$field,$object_type);
     my($quoted);
 
     $type =~ tr/[A-Z]/[a-z]/;
@@ -778,6 +779,11 @@ sub Quote_Field {
     }
     if ($quoted) {
 	$value =~ s/\'/\'\'/g;	# Quote quotes
+	if (length($value) > $length &&
+	    $type !~ /date/ && 
+	    $type !~ /text/) {
+	    $value = substr($value,0,$length);
+	}
 	$value = "'$value'";
     }
     if ($type =~ /date/ &&

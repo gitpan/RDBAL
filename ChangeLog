@@ -9,4 +9,6 @@ Tue Sep 29 1998   Brian Dunford-Shore <brian@ibc.wustl.edu>
                   spurious 'use Sybase::DBlib' from DBI.pm,
                   added -username option to new RDBAL::Schema for further
                   differentiating cache.
+ o  Release 1.16  Fixed bug to actually use the Config.pm search order.
+                  Removed reference to Apache::Sybase::DBlib from Schema.pm.
 

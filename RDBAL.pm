@@ -38,6 +38,11 @@ sub Connect {
     my($connection);
     my($driver);
 
+    map {
+	if (!defined($preferred_layer) && defined($Layer{$_})) {
+	    $preferred_layer = $_;
+	}
+    } @RDBAL::Config::search_order;
     if (defined($preferred_layer) &&
 	defined($Layer{$preferred_layer})) {
 	if ($preferred_layer eq 'SybaseDBlib') {
@@ -55,9 +60,12 @@ sub Connect {
 		new RDBAL::Layer::DBI($username,$password,$server,$driver,$database);
 	}
     } else {
-	if ($Layer{'SybaseDBlib'}) {
+	if ($Layer{'ApacheSybaseDBlib'}) {
 	    $connection =
 		new RDBAL::Layer::ApacheSybaseDBlib($username,$password,$server);
+	} elsif ($Layer{'SybaseDBlib'}) {
+	    $connection =
+		new RDBAL::Layer::SybaseDBlib($username,$password,$server);
 	} elsif ($Layer{'ODBC'}) {
 	    $connection =
 		new RDBAL::Layer::ODBC($username,$password,$server);
