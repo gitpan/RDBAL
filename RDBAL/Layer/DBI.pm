@@ -216,7 +216,7 @@ sub Query {
     do { 
     	while(@row = $self->NextRow()) {
 	    if (@row<=1) { 
-		push(@out,@row[0]); 
+		push(@out,$row[0]); 
 	    } else { 
 		$ptr = [];
 		push(@{$ptr},@row);

@@ -13,3 +13,5 @@ RDBAL.pm                         RDBAL module and documentation
 msql_rdbal_schema                Schema cache creater for mSQL
 cache/make_cache_dir.pl		 Script to make schema cache directory
 test.pl                          Run tests
+pg_schema.pl			 Convert from T-SQL DDL to PostgreSQL DDL
+pg_rules.patch			 Patch for PostgreSQL 6.5.1 to correctly report rules (fully qualified field names)

@@ -2,7 +2,7 @@ package RDBAL;
 
 use RDBAL::Config;
 
-%Layer;
+use vars qw( %Layer );
 
 BEGIN {
     # DBI is a special case
@@ -51,6 +51,9 @@ sub Connect {
 	} elsif ($preferred_layer eq 'ApacheSybaseDBlib') {
 	    $connection =
 		new RDBAL::Layer::ApacheSybaseDBlib($username,$password,$server);
+	} elsif ($preferred_layer =~ /^Pg/) {
+	    $connection =
+		new RDBAL::Layer::Pg($username,$password,$server,$database);
 	} elsif ($preferred_layer eq 'ODBC') {
 	    $connection =
 		new RDBAL::Layer::ODBC($username,$password,$server);
@@ -66,6 +69,9 @@ sub Connect {
 	} elsif ($Layer{'SybaseDBlib'}) {
 	    $connection =
 		new RDBAL::Layer::SybaseDBlib($username,$password,$server);
+	} elsif ($preferred_layer =~ /^Pg/) {
+	    $connection =
+		new RDBAL::Layer::Pg($username,$password,$server,$database);
 	} elsif ($Layer{'ODBC'}) {
 	    $connection =
 		new RDBAL::Layer::ODBC($username,$password,$server);
@@ -118,10 +124,10 @@ driver may be written for any database connection layer.  It is also possible
 to write middle layer drivers which would parse SQL statements and implement
 them in some arbitrary fashion.
 
-Currently available are: Apache::Sybase::DBlib, Sybase::DBlib, ODBC middle
+Currently available are: Pg (PostgreSQL), Apache::Sybase::DBlib, Sybase::DBlib, ODBC middle
 layer drivers, and dbi:Sybase.
 
-The presence of a given middle layer driver may be checked by checking to see if: $RDBAL::Layer{'ApacheSybaseDBlib'}, $RDBAL::Layer{'SybaseDBlib'}, $RDBAL::Layer{'ODBC'}, or $RDBAL::Layer{'dbi:Sybase'} is defined.
+The presence of a given middle layer driver may be checked by checking to see if: $RDBAL::Layer{'Pg'}, $RDBAL::Layer{'ApacheSybaseDBlib'}, $RDBAL::Layer{'SybaseDBlib'}, $RDBAL::Layer{'ODBC'}, or $RDBAL::Layer{'dbi:Sybase'} is defined.
 
 =head1 FUNCTIONS
 
@@ -135,6 +141,8 @@ For Win32::ODBC, server is the name of an existing DSN.
 Possible values for preferred_layer are (in the order of default preference):
 
 =over 4
+
+=item Pg
 
 =item ApacheSybaseDBlib
 
@@ -221,7 +229,7 @@ These are features that would be nice to have and might even happen someday (esp
 
 =item Other types of database servers:
 
-(PostgreSQL, mSQL, mySQL, etc.).
+(mSQL, mySQL, etc.).
 
 =back
 
@@ -249,8 +257,8 @@ You really mean 'extra' features ;).  None known.
 
 =head1 COPYRIGHT
 
-Copyright (c) 1997 Washington University, St. Louis, Missouri. All
-rights reserved.  This program is free software; you can redistribute
-it and/or modify it under the same terms as Perl itself.
+Copyright (c) 1997, 1998, 1999 Washington University, St. Louis,
+Missouri. All rights reserved.  This program is free software; you can
+redistribute it and/or modify it under the same terms as Perl itself.
 
 =cut

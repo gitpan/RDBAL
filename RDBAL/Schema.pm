@@ -10,7 +10,7 @@ package RDBAL::Schema;
 
 require 5.000;
 
-$VERSION = "1.16";
+$VERSION = "1.2";
 sub Version { $VERSION; }
 
 use RDBAL::Config;
@@ -139,15 +139,19 @@ EndQuery
     if ($self->{'server_type'} eq 'oracle') {
 	$query = "select user_catalog.table_name, table_type, column_name, data_type, data_length, data_precision, data_scale, 0, nullable from user_catalog, user_tab_columns where user_catalog.table_name=user_tab_columns.table_name and table_type != 'SYNONYM'";
     }
-    $connection->Sql($query);
-    while(@row = $connection->NextRow()) {
-	if ($connection->Regular_Row()) {
-	    @row = trim_spaces(@row);
-	    $cache_output .= join("\t",('O', @row)) . "\n";
-	    $self->add_table_row(@row);
+    if ($self->{'server_type'} eq 'Pg') {
+	$cache_output .= pg_get_table_fields($connection,$self);
+    } else {
+	$connection->Sql($query);
+	while(@row = $connection->NextRow()) {
+	    if ($connection->Regular_Row()) {
+		@row = trim_spaces(@row);
+		$cache_output .= join("\t",('O', @row)) . "\n";
+		$self->add_table_row(@row);
+	    }
 	}
+	while ($connection->More_Results()) {}
     }
-    while ($connection->More_Results()) {}
     $cache_output .= "\f\n";
     return $cache_output;
 }
@@ -163,17 +167,21 @@ sub get_pkeys {
     my($owner,$kobject);
     my($cache_output);
 
-    # Get primary keys and indexes of tables
-    map {
-	$object = $_;
-	if (/\./) {
-	    ($owner,$kobject) = /^([^\.]+)\.(.*)$/;
-	    $sp_pkeys = "execute sp_pkeys $kobject, $owner";
-	} else {
-	    $sp_pkeys = "execute sp_pkeys $_";
-	}
-	if ($self->{'server_type'} eq 'oracle') {
-	    $sp_pkeys = "select 'table_qualifier', all_constraints.owner,
+    if ($self->{'server_type'} eq 'Pg') {
+	$cache_output .= pg_get_primary_keys($connection,$self,$object_type,
+					     $self->{'database'});
+    } else {
+	# Get primary keys and indexes of tables
+	map {
+	    $object = $_;
+	    if (/\./) {
+		($owner,$kobject) = /^([^\.]+)\.(.*)$/;
+		$sp_pkeys = "execute sp_pkeys $kobject, $owner";
+	    } else {
+		$sp_pkeys = "execute sp_pkeys $_";
+	    }
+	    if ($self->{'server_type'} eq 'oracle') {
+		$sp_pkeys = "select 'table_qualifier', all_constraints.owner,
  all_constraints.table_name, column_name, position
  from all_constraints, all_cons_columns
  where all_constraints.constraint_type='P'
@@ -181,18 +189,18 @@ sub get_pkeys {
  and all_constraints.owner=all_cons_columns.owner
  and all_constraints.table_name=all_cons_columns.table_name
  and all_constraints.table_name = '$_'";
-	}
-	$connection->Sql($sp_pkeys);
-	while(@row = $connection->NextRow()) {
-	    if ($connection->Regular_Row()) {
-		@row = trim_spaces(@row);
-		$cache_output .= join("\t",('PK',$object, $object_type, @row)) . "\n";
-		$self->add_pkey_row($object,$object_type,@row);
 	    }
-	}
-	while ($connection->More_Results()) {}
-	
-    } @objects;
+	    $connection->Sql($sp_pkeys);
+	    while(@row = $connection->NextRow()) {
+		if ($connection->Regular_Row()) {
+		    @row = trim_spaces(@row);
+		    $cache_output .= join("\t",('PK',$object, $object_type, @row)) . "\n";
+		    $self->add_pkey_row($object,$object_type,@row);
+		}
+	    }
+	    while ($connection->More_Results()) {}
+	} @objects;
+    }
     $cache_output .= "\f\n";
     return $cache_output;
 }
@@ -208,37 +216,42 @@ sub get_fkeys {
     my($owner,$kobject);
     my($cache_output);
 
-    # Get relations
-    map {
-	$object = $_;
-	if (/\./) {
-	    ($owner,$kobject) = /^([^\.]+)\.(.*)$/;
-	    $sp_fkeys = "execute sp_fkeys $kobject, $owner";
-	} else {
-	    $sp_fkeys = "execute sp_fkeys $_";
-	}
-	if ($self->{'server_type'} eq 'oracle') {
-	    $sp_fkeys = "select 'tq' as pk_tq, a.owner as pk_owner, a.table_name as pk_table, a.column_name as pk_column,
+    if ($self->{'server_type'} eq 'Pg') {
+	$cache_output .= pg_get_fk($connection,$self,$object_type,
+				   ,$self->{'database'});
+    } else {
+	# Get relations
+	map {
+	    $object = $_;
+	    if (/\./) {
+		($owner,$kobject) = /^([^\.]+)\.(.*)$/;
+		$sp_fkeys = "execute sp_fkeys $kobject, $owner";
+	    } else {
+		$sp_fkeys = "execute sp_fkeys $_";
+	    }
+	    if ($self->{'server_type'} eq 'oracle') {
+		$sp_fkeys = "select 'tq' as pk_tq, a.owner as pk_owner, a.table_name as pk_table, a.column_name as pk_column,
  'tq', b.owner, b.table_name, b.column_name, a.position as pk_position, b.position
  from all_cons_columns a, all_cons_columns b, all_constraints ac
  where ac.constraint_type='R' and a.table_name='$_'
  and ac.r_constraint_name=a.constraint_name
  and ac.constraint_name=b.constraint_name";
-	}
-	$connection->Sql($sp_fkeys);
-	while(@row = $connection->NextRow()) {
-	    if ($connection->Regular_Row() &&
-		defined($row[2]) && $row[2] !~ /^\s*$/ &&
-		defined($row[3]) && $row[3] !~ /^\s*$/ &&
-		defined($row[6]) && $row[6] !~ /^\s*$/ &&
-		defined($row[7]) && $row[7] !~ /^\s*$/ ) {
-		@row = trim_spaces(@row);
-		$cache_output .= join("\t",('FK', $object_type, @row)) . "\n";
-		$self->add_fkey_row($object_type,@row);
 	    }
-	}
-	while ($connection->More_Results()) {}
-    } @objects;
+	    $connection->Sql($sp_fkeys);
+	    while(@row = $connection->NextRow()) {
+		if ($connection->Regular_Row() &&
+		    defined($row[2]) && $row[2] !~ /^\s*$/ &&
+		    defined($row[3]) && $row[3] !~ /^\s*$/ &&
+		    defined($row[6]) && $row[6] !~ /^\s*$/ &&
+		    defined($row[7]) && $row[7] !~ /^\s*$/ ) {
+		    @row = trim_spaces(@row);
+		    $cache_output .= join("\t",('FK', $object_type, @row)) . "\n";
+		    $self->add_fkey_row($object_type,@row);
+		}
+	    }
+	    while ($connection->More_Results()) {}
+	} @objects;
+    }
     $cache_output .= "\f\n";
     return $cache_output;
 }
@@ -258,65 +271,70 @@ sub get_index {
     my(@fields);
     my(@irow);
 
-    # Get index of table
-    map {
-	$object = $_;
-	$sp_helpindex = "if exists (select id from sysindexes where id=object_id('$object') and indid > 0 and indid < 255) execute sp_helpindex '$object'";
-	if ($self->{'server_type'} eq 'oracle') {
-	    $sp_helpindex = "select a.index_name, uniqueness,
+    if ($self->{'server_type'} eq 'Pg') {
+	$cache_output .= pg_get_indexes($connection,$self,$object_type,
+					$self->{'database'});
+    } else {
+	# Get index of table
+	map {
+	    $object = $_;
+	    $sp_helpindex = "if exists (select id from sysindexes where id=object_id('$object') and indid > 0 and indid < 255) execute sp_helpindex '$object'";
+	    if ($self->{'server_type'} eq 'oracle') {
+		$sp_helpindex = "select a.index_name, uniqueness,
 	column_name
 	from all_indexes a, all_ind_columns b
 	where owner=index_owner and a.index_name=b.index_name
         and a.table_name='$_'
 	and a.table_owner=b.table_owner and a.table_name=b.table_name
 	order by index_owner, a.index_name, a.table_owner, a.table_name, column_position";
-	}
-	$connection->Sql($sp_helpindex);
-	do {
-	    while(@row = $connection->NextRow()) {
-		if ($connection->Regular_Row()) {
-		    @row = trim_spaces(@row);
-		    if ($#row > 1) {
-			if ($row[0] ne $last_index) {
-			    if (defined($last_index)) {
-				@irow = ($last_index, $last_string,
-					 join(', ',@fields));
-				$self->add_index_row($object,$object_type,
-						     @irow);
-				$cache_output .= join("\t",('I',
-							    $object,
-							    $object_type,
-							    @irow)) . "\n";
-				push @indexes, join("\t",($irow[0], $irow[2],
-							  $irow[1]));
+	    }
+	    $connection->Sql($sp_helpindex);
+	    do {
+		while(@row = $connection->NextRow()) {
+		    if ($connection->Regular_Row()) {
+			@row = trim_spaces(@row);
+			if ($#row > 1) {
+			    if ($row[0] ne $last_index) {
+				if (defined($last_index)) {
+				    @irow = ($last_index, $last_string,
+					     join(', ',@fields));
+				    $self->add_index_row($object,$object_type,
+							 @irow);
+				    $cache_output .= join("\t",('I',
+								$object,
+								$object_type,
+								@irow)) . "\n";
+				    push @indexes, join("\t",($irow[0], $irow[2],
+							      $irow[1]));
+				}
+				undef @fields;
+				$last_index = $row[0];
+				$last_string = $row[1];
 			    }
-			    undef @fields;
-			    $last_index = $row[0];
-			    $last_string = $row[1];
+			    push @fields, ($row[2]);
 			}
-			push @fields, ($row[2]);
 		    }
 		}
+	    } while ($connection->More_Results());
+	    if (defined($last_index)) {
+		@irow = ($last_index, $last_string,
+			 join(', ',@fields));
+		$self->add_index_row($object,$object_type,@irow);
+		$cache_output .= join("\t",('I',
+					    $object, $object_type,
+					    @irow)) . "\n";
+		push @indexes, join("\t",($irow[0], $irow[2],
+					  $irow[1]));
 	    }
-	} while ($connection->More_Results());
-	if (defined($last_index)) {
-	    @irow = ($last_index, $last_string,
-		     join(', ',@fields));
-	    $self->add_index_row($object,$object_type,@irow);
-	    $cache_output .= join("\t",('I',
-					$object, $object_type,
-					@irow)) . "\n";
-	    push @indexes, join("\t",($irow[0], $irow[2],
-				      $irow[1]));
-	}
-	if (defined(@indexes)) {
-	    $self->add_indexes($object,$object_type,@indexes);
-	}
-	undef @indexes;
-	undef $last_index;
-	undef @fields;
-	$cache_output .= "\n";
-    } @objects;
+	    if (defined(@indexes)) {
+		$self->add_indexes($object,$object_type,@indexes);
+	    }
+	    undef @indexes;
+	    undef $last_index;
+	    undef @fields;
+	    $cache_output .= "\n";
+	} @objects;
+    }
     $cache_output .= "\f\n";
     return $cache_output;
 }
@@ -339,6 +357,8 @@ sub get_comments {
 EndQuery
 	if ($self->{'server_type'} eq 'oracle') {
 	    $comment_query = "select text from all_views where view_name='$object'";
+	} elsif ($self->{'server_type'} eq 'Pg') {
+	    $comment_query = "SELECT definition FROM pg_views WHERE viewname='$object'";
 	}
 	$connection->Sql($comment_query);
 	while(@row = $connection->NextRow()) {
@@ -349,6 +369,9 @@ EndQuery
 		$row[0] =~ s/^\s*//g;
 		$row[0] =~ s/\s*$//g;
 		$row[0] =~ s/\t/     /g;
+		if ($self->{'server_type'} eq 'Pg') {
+		    $row[0] =~ s/\s*\;\s*$//;
+		}		
 		$self->{$object_type}->{$object}->{'comments'} .= $row[0];
 		$row[0] =~ s/\n/\r/g;
 		$cache_output .= join("\t",('C',$object,$object_type, $row[0] )) . "\n";
@@ -975,6 +998,327 @@ sub add_fkey_row {
     return $self;
 }
 
+sub pg_get_table_fields {
+    my($X) = shift;
+    my($self) = shift;
+    my($view_query) = 'SELECT viewname from pg_views';
+    # Table Fields:
+    my($query) = "SELECT c.relname as \"object\", 'U' as \"objecttype\",
+		a.attname as \"fieldname\", t.typname as \"typename\",
+		a.attlen as \"typelength\", a.atttypmod as \"fieldlength\",
+		0 as \"identity\", a.attnotnull as \"nullable\"
+	FROM pg_class c, pg_attribute a, pg_user u, pg_type t 
+	WHERE c.relkind = 'r' and
+		a.attnum > 0 and a.attrelid = c.oid and
+		c.relowner=u.usesysid and a.atttypid = t.oid
+	ORDER BY c.relname, attnum";
+    my(@row);
+    my($result);
+    my($status);
+    my($cache_output);
+
+    $result = $X->Sql($view_query);
+    my($view);
+    my(%VIEW);
+    do {
+	while(@row = $X->NextRow()) {
+	    if ($X->Regular_Row()) {
+		$view = $row[0];
+		$VIEW{$view} = 1;
+	    }
+	}
+    } while ($X->More_Results());
+
+    $result = $X->Sql($query);
+    my($object, $objecttype, $fieldname, $typename, $typelength, $attlength,
+       $identity, $nullable);
+    do {
+	while(@row = $X->NextRow()) {
+	    if ($X->Regular_Row()) {
+		($object, $objecttype, $fieldname, $typename,
+		 $typelength, $attlength,
+		 $identity, $nullable) = @row;
+		my($fieldlength, $precision, $scale);
+		my(%TYPEMAP) = (
+				'abstime' => 'datetime',
+				'aclitem' => 'binary',
+				'bool' => 'bit',
+				'box' => 'binary',
+				'bpchar' => 'char',
+				'bytea' => 'tinyint',
+				'cid' => 'binary',
+				'cidr' => 'binary',
+				'circle' => 'binary',
+				'date' => 'datetime',
+				'filename' => 'varchar',
+				'float4' => 'float',
+				'float8' => 'double',
+				'inet' => 'binary',
+				'int2' => 'smallint',
+				'int4' => 'int',
+				'int8' => 'int',
+				'line' => 'binary',
+				'lseg' => 'binary',
+				'macaddr' => 'binary',
+				'name' => 'varchar',
+				'oid' => 'int',
+				'oid8' => 'int',
+				'path' => 'varchar',
+				'point' => 'binary',
+				'polygon' => 'binary',
+				'regproc' => 'binary',
+				'reltime' => 'datetime',
+				'smgr' => 'binary',
+				'tid' => 'int',
+				'time' => 'datetime',
+				'timespan' => 'datetime',
+				'tinterval' => 'datetime',
+				'unknown' => 'binary',
+				'xid' => 'int'
+				);
+		
+		if (defined($TYPEMAP{$typename})) {
+		    $typename = $TYPEMAP{$typename};
+		}
+		
+		if ($typelength > 0) {
+		    $fieldlength = $typelength;
+		    undef $precision;
+		    undef $scale;
+		} else {
+		    if ($typename =~ /[Nn][Uu][Mm][Ee][Rr][Ii][Cc]/) {
+			$precision = ($attlength - 4) >> 16;
+			$scale = ($attlength - 4) & 0xffff;
+			$fieldlength = $precision;
+		    } else {
+			$fieldlength = $attlength - 4;
+			undef $precision;
+			undef $scale;
+		    }
+		}
+		$nullable = ($nullable =~ /[Tt]/) ? 0 : 1;
+		$objecttype = (defined($VIEW{$object})) ? 
+		    ( ($object =~ /^pg_/) ? 'SV' : 'V') :
+			( ($object =~ /^pg_/) ? 'S' : 'U') ;
+		@row = ($object, $objecttype, $fieldname,
+				     $typename, $fieldlength,
+				     $precision, $scale,
+				     $identity, $nullable);
+		$cache_output .= join("\t",('O', @row)) . "\n";
+		$self->add_table_row(@row);
+	    }
+	}
+    } while ($X->More_Results());
+    return $cache_output;
+}
+
+
+sub pg_get_primary_keys {
+    my($X) = shift;
+    my($self) = shift;
+    my($ob_type) = shift;
+    my($database) = shift;
+    my($cache_output);
+
+    # Primary Key
+    my($query) = "SELECT t.relname as \"object\",
+		'User Table' as \"objecttype\",
+		'$database' as \"database\", ' ' as \"owner\",
+		t.relname as \"object\",
+		a.attname as \"fieldname\", a.attnum as \"position\",
+		c.relname as \"primary_key\"
+	FROM pg_class c, pg_class t, pg_index i, pg_attribute a
+	WHERE a.attnum > 0 and a.attrelid=c.oid and t.oid=i.indrelid
+	and c.oid=i.indexrelid and i.indisunique='t'
+	ORDER BY t.relname, attnum";
+    my(@row);
+    my($result);
+    my($status);
+
+    $result = $X->Sql($query);
+    do {
+	while(@row = $X->NextRow()) {
+	    if ($X->Regular_Row()) {
+		if (($ob_type eq 'User Table' && $row[0] !~ '^pg_') ||
+		    ($ob_type eq 'System Table' && $row[0] =~ '^pg_')) {
+			$cache_output .= join("\t",('PK',@row)) . "\n";
+			$self->add_pkey_row(@row);
+		}
+	    }
+	}
+    } while ($X->More_Results());
+    return $cache_output;
+}
+
+sub pg_get_fk {
+    my($X) = shift;
+    my($self) = shift;
+    my($ob_type) = shift;
+    my($database) = shift;
+    my($cache_output);
+
+    # Rules
+    my($query) = "SELECT tablename, rulename, definition FROM pg_rules";
+    my(@row);
+    my($result);
+    my($status);
+
+    $result = $X->Sql($query);
+    my($object, $rulename, $definition);
+    my($rule, $ptable, $where);
+    do {
+	while(@row = $X->NextRow()) {
+	    if ($X->Regular_Row()) {
+		($object, $rulename, $definition) = @row;
+		if ($rulename =~ /^fk_/ &&
+		    $definition =~ /^\s*CREATE\s+RULE\s+(\S+)\s+AS\s+ON\s+INSERT\s+TO\s+(\S+)\s+WHERE\s+(.*)\s*DO\s+INSTEAD\s+NOTHING\s*/i) {
+		    ($rule, $ptable, $where) = $definition =~ /^\s*CREATE\s+RULE\s+(\S+)\s+AS\s+ON\s+INSERT\s+TO\s+(\S+)\s+WHERE\s+(.*)\s*DO\s+INSTEAD\s+NOTHING\s*/i;
+		    $rule =~ s/\"//g;
+		    $ptable =~ s/\"//g;
+		    if (($ob_type eq 'User Table' && $ptable !~ '^pg_') ||
+			($ob_type eq 'System Table' && $ptable =~ '^pg_')) {
+			$cache_output .= pg_parse_for_fkey($self,
+							   $database,$ptable,
+							   $rulename,$where);
+		    }
+		}
+	    }
+	}
+    } while ($X->More_Results());
+    return $cache_output;
+}
+
+sub pg_parse_for_fkey {
+    my($self) = shift;
+    my($database) = shift;
+    my($table) = shift;
+    my($rulename) = shift;
+    my($where) = shift;
+    my($relation_ref) = shift;
+    my($cache_output) = shift;
+    my($conjunction);
+    my($first,$operator,$second);
+    my($primary, $foreign);
+    my($ptable, $ftable, $pfield, $ffield);
+    my($object_type) = ($table =~ /^pg_/) ? 'System Table' : 'User Table';
+    my($key_seq);
+    my(@row);
+
+    if (!defined($relation_ref)) {
+	$relation_ref = {};
+    }
+    if ($where =~ /^\s*$/) {
+	return $cache_output;
+    }
+    ($conjunction) = $where =~ s/^\s*(OR|AND)\s+//i;
+    $where =~ s/^\s*(OR|AND)\s+//i;
+    $where =~ s/^\(+//;
+    ($first,$operator,$second) = $where =~ /^(\S+)\s+(\S+)\s+(\S+)/;
+    $second =~ s/\)+//g;
+    if ($first =~ /new\./) {
+	$primary = $second;
+	$foreign = $first;
+    } else {
+	$primary = $first;
+	$foreign = $second;
+    }
+    $foreign =~ s/new\./$table./;
+    $foreign =~ s/\"//g;
+    $primary =~ s/\"//g;
+    $where =~ s/^\S+\s+\S+\s+\S+//;
+    $where =~ s/^\s*\)+\s*//;
+    ($ptable, $pfield) = split('\.',$primary);
+    ($ftable, $ffield) = split('\.',$foreign);
+    $key_seq = $relation_ref->{"$ftable\t$ptable"}; # key sequence position
+    $key_seq++;
+    $relation_ref->{"$ftable\t$ptable"} = $key_seq;
+    @row = ($database, undef, $ptable, $pfield, $database, undef, $ftable,
+	    $ffield, $key_seq, 1, 1, $rulename);
+    $cache_output .= join("\t",('FK', $object_type, @row)) . "\n";
+    $self->add_fkey_row($object_type,@row);
+    return pg_parse_for_fkey($self,$database,$table,$rulename,$where,
+			     $relation_ref,$cache_output);
+}
+
+
+sub pg_get_indexes {
+    my($X) = shift;
+    my($self) = shift;
+    my($ob_type) = shift;
+    my($database) = shift;
+    my($cache_output);
+    # Indexes
+    my($query) = "SELECT t.relname as \"tablename\",
+		'User Table' as \"objecttype\",
+		c.relname as \"indexname\", a.attname as \"fieldname\",
+		i.indisunique, i.indisclustered
+	FROM pg_class c, pg_class t, pg_index i, pg_attribute a
+	WHERE a.attnum > 0 and a.attrelid=c.oid and t.oid=i.indrelid and
+	c.oid=i.indexrelid'
+	ORDER BY t.relname, attnum";
+    my(@row);
+    my($result);
+    my($status);
+    my($object, $object_type, $indexname, $fieldname, $isunique, $isclustered);
+    my($last_index);
+    my($last_object, $last_indexname);
+    my(@fields);
+    my($indexdescription);
+    my(@indexdescription);
+    my(@irow);
+    my(@indexes);
+
+    $result = $X->Sql($query);
+    do {
+	while(@row = $X->NextRow()) {
+	    if ($X->Regular_Row()) {
+		($object, $object_type, $indexname, $fieldname,
+		 $isunique, $isclustered) = @row;
+		if ($last_index ne "$object\t$object_type\t$indexname" &&
+		    defined($last_index)) {
+		    @irow = ($last_indexname, $indexdescription,
+			     join(', ',@fields));
+		    if (($ob_type eq 'User Table' && $object !~ '^pg_') ||
+			($ob_type eq 'System Table' && $object =~ '^pg_')) {
+			$self->add_index_row($last_object,$object_type,
+					     @irow);
+			$cache_output .= join("\t",('I',
+						    $last_object,
+						    $object_type,
+						    @irow)) . "\n";
+			push @indexes, join("\t",($irow[0], $irow[2],
+						  $irow[1]));
+			if (defined(@indexes)) {
+			    $self->add_indexes($last_object,$object_type,
+					       @indexes);
+			}
+			undef @indexes;
+		    }
+		    undef @fields;
+		    if ($last_object ne $object && defined($last_object)) {
+			$cache_output .= "\n";
+		    }
+		}
+		$last_object = $object;
+		$last_indexname = $indexname;
+		undef @indexdescription;
+		if ($isunique =~ /[Tt]/) {
+		    push @indexdescription, ('unique');
+		}
+		if ($isclustered =~ /[Tt]/) {
+		    push @indexdescription, ('clustered');
+		}
+		$indexdescription = join(', ',@indexdescription);
+		$last_index = "$object\t$object_type\t$indexname";
+		push @fields, ($fieldname);
+	    }
+	}
+    } while ($X->More_Results());
+    return $cache_output;
+}
+
+
+
 1;
 
 
@@ -1023,7 +1367,8 @@ RDBAL::Schema - RDBAL Schema information object
 =head1 ABSTRACT
 
 This perl library uses perl5 objects to make it easy to retrieve
-information about a particular Sybase or MS SQL databases's schema.
+information about a particular PostgreSQL, Sybase, MS SQL, or Oracle
+databases's schema.
 
 =head1 INSTALLATION:
 
@@ -1040,6 +1385,14 @@ found and type the following:
 and to create the schema cache directory:
 
 	make schema_cache
+
+=head2 Installation of pg_schema.pl
+
+An example script for converting a DDL in Transact SQL format to
+PostgreSQL format with foreign key relational integrity enforced and
+remembered by PostgreSQL rules is included and must be manually
+installed (change the first line from #!/usr/local/bin/perl if your
+perl lives elsewhere).  See pg_schema.pl below for more.
 
 =head1 DESCRIPTION
 
@@ -1070,6 +1423,62 @@ the schema object is created.  Table relationship information is
 retrieved for all tables when the first relationship information is
 requested.
 
+=head2 pg_schema.pl
+
+The rules this script creates are necessary for RDBAL to have foreign
+key relation information.  It translates a foreign key reference into
+PostgreSQL rules:
+
+FROM:
+
+    alter table table2
+        add foreign key  (field1, field2)
+           references table1 (field1, field2)
+    go
+
+TO:
+
+Insert RI:
+
+	create rule fk_table2_insert as on insert to table2
+	where new.field1 <> table1.field1 and new.field2 <> table1.field1
+        do instead nothing;
+
+Update RI:
+
+	create rule fk_table2_update as on update to table2
+	where new.field1 <> table1.field1 and new.field2 <> table1.field2
+        do instead nothing;
+
+	create rule pk_table1_update as on update to table1
+	where old.field1 = table2.field1 and old.field2 = table2.field2
+        do instead nothing;
+
+NOTE: the pk_update rule must list all children!
+
+Delete RI:
+
+	create rule pk_table1_delete as on delete to table1
+	where old.field1 = table2.field1 and old.field2 = table2.field2
+        do instead nothing;
+
+NOTE: the delete rule must list all children!
+
+This script also maps datatypes:
+
+=over 4
+
+=item smalldatetime to datetime
+
+=item tinyint to int
+
+=item float4 or float8 to float
+
+=back
+
+pg_schema.pl reads the input DDL on standard input and writes the
+output DDL to standard output.
+
 =head2 CREATING A NEW RDBAL::Schema OBJECT:
 
      $query = new RDBAL::Schema($connection,$database);
@@ -1085,8 +1494,8 @@ Options are passed as: -option => value, where -option is one of:
      -server_type    Database server type.  This is used to differentiate
                      how to retrieve the schema.  The default is Transact-SQL
                      or a hand-crafted schema cache file.  Currently, the
-                     only correct values for this are I<undef>, I<oracle>,
-                     I<dbi:Sybase>, or I<dbi:Oracle>.
+                     only correct values for this are I<undef>, I<pg>,
+                     I<oracle>, I<dbi:Sybase>, or I<dbi:Oracle>.
      -get_system     1 or undef.  A true value for this option causes retrieval
                      (and caching) of schema for system tables.
      -nocache        1 or undef.  A true value causes the cached schema to not
@@ -1381,6 +1790,161 @@ A view's underlying tables may be retrieved from the database schema.
 Appropriately put quote marks around a field's value.
 Single quote marks get doubled, example: dont't  ==> "don''t".
 
+=head1 Schema Cache File Format
+
+The schema cache file contains individual lines which describe some
+part of a schema (a descriptor).  Each descriptor is a tab delimited
+line with the first element on the line specifying what is being
+described (the type).  Carriage returns (not newlines) may be embedded
+in the comment (definition) descriptor elements.  Blank lines follow
+each group of index descriptors for a table.  Line feeds seperate
+different types of descriptors.
+
+=head2 Object Descriptor
+
+An object descriptor describes the fields or parameters of a system or
+user table, a view, or a procedure.  It contains the following (tab
+delimited) elements:
+
+=over 4
+
+=item Type = 'O'
+
+=item Object = owner.object (owner defaults to 'dbo')
+
+=item Object type:
+
+       S => 'System Table'
+       U => 'User Table'
+       V => 'View'
+       P => 'Procedure'
+       TABLE => 'User Table'
+       VIEW => 'View'
+       PROCEDURE => 'Procedure'
+
+=item Field name
+
+=item Field type
+
+=item Field length
+
+=item Field precision
+
+=item Field scale
+
+=item Identity field (1 if true)
+
+=item Nullable field (1 if true)
+
+=back
+
+=head2 Primary Key Descriptor
+
+A primary key descriptor lists the primary key for a table and the
+fields which comprise the primary key.  It contains the following (tab
+delimited) elements:
+
+=over 4
+
+=item Type = 'PK'
+
+=item Name of object having primary key
+
+=item Object type ('User Table' or 'System Table')
+
+=item Database
+
+=item Owner (default is 'dbo')
+
+=item Object (table)
+
+=item Primary Key field
+
+=item Position in primary key
+
+=item Primary Key name (optional)
+
+=head2 Foreign Key Descriptor
+
+A foreign key descriptor lists the foreign key relationships for a
+table.  Each descriptor pairs a primary key field name of one table
+with the corresponding foreign key field name of another table.  It
+also gives the position each of those fields within the primary and
+foreign key tuples.  It contains the following (tab delimited)
+elements:
+
+=over 4
+
+=item Type = 'FK'
+
+=item Object type ('User Table' or 'System Table')
+
+=item Database
+
+=item Owner (default is 'dbo')
+
+=item Primary Key Object (table)
+
+=item Primary Key field
+
+=item Database
+
+=item Owner (default is 'dbo')
+
+=item Foreign Key Object (table)
+
+=item Foreign Key field
+
+=item Foreign key field position in tuple
+
+=item Update rule number -- always 1, if present
+
+=item Delete rule number -- always 1, if present
+
+=item Foreign Key name (Optional)
+
+=item Primary Key name (Optional)
+
+=back
+
+=head2 Index Descriptors
+
+An index descriptor lists the indexes for a table and the
+fields which comprise that index.  It contains the following (tab
+delimited) elements (blank lines follow each set of indexes for a table):
+
+=over 4
+
+=item Type = 'I'
+
+=item Index Object (table)
+
+=item Index Object type ('User Table' or 'System Table')
+
+=item Index Name
+
+=item Index description
+
+=item Comma seperated, ordered index field list
+
+=back
+
+=head2 Comments (and stored procedure definitions) Descriptors
+
+A comment (or definition) descriptor contains the following (tab delimited) elements:
+
+=over 4
+
+=item Type = 'C'
+
+=item Object
+
+=item Object Type is one of: 'User Table', 'System Table', 'View', 'Procedure'
+
+=item Comment or definition (carriage returns replace newlines and tabs are replaced by five spaces
+
+=back
+
 =head1 Example Script
 
   #!/usr/local/bin/perl
@@ -1523,13 +2087,9 @@ These are features that would be nice to have and might even happen someday (esp
 
 =over 4
 
-=item Alternative module interfaces to the database servers:
-
-(DBI/DBD).
-
 =item Other types of database servers:
 
-(Oracle, PostgreSQL, mSQL, mySQL, etc.).
+(mSQL, mySQL, etc.).
 
 =back
 
@@ -1555,8 +2115,8 @@ You really mean 'extra' features ;).  None known.
 
 =head1 COPYRIGHT
 
-Copyright (c) 1997 Washington University, St. Louis, Missouri. All
-rights reserved.  This program is free software; you can redistribute
-it and/or modify it under the same terms as Perl itself.
+Copyright (c) 1997, 1998, 1999 Washington University, St. Louis,
+Missouri. All rights reserved.  This program is free software; you can
+redistribute it and/or modify it under the same terms as Perl itself.
 
 =cut

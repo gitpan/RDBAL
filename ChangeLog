@@ -1,4 +1,4 @@
-Tue Sep 29 1998   Brian Dunford-Shore <brian@ibc.wustl.edu>
+Tue Aug 17 1999   Brian Dunford-Shore <brian@ibc.wustl.edu>
 
  o  Release 1.00
  o  Release 1.10  Fixed Transact-SQL schema bug of fields not showing up
@@ -11,4 +11,7 @@ Tue Sep 29 1998   Brian Dunford-Shore <brian@ibc.wustl.edu>
                   differentiating cache.
  o  Release 1.16  Fixed bug to actually use the Config.pm search order.
                   Removed reference to Apache::Sybase::DBlib from Schema.pm.
+ o  Release 1.17  Fixed some warning messages.
+ o  Release 1.2   Added support for PostgreSQL (see pg_schema.pl also).
+                  Added documentation about schema cache format.
 
